@@ -13,6 +13,7 @@ function love.load()
 	HOLE_AREA = 0.3 --cm^2
 	WHEEL_RADIUS = 25 --cm
 	WHEEL_MI = 0.0125 --kg*m^2
+	WHEEL_DRAG = 0.9 --ratio each second
 
 	--Display
 	SHOW_WHEEL = true
@@ -36,6 +37,9 @@ function love.draw()
 			local attachY = math.sin(math.pi * i / SPOKES) * WHEEL_RADIUS
 			love.graphics.line(attachX, attachY, -attachX, -attachY)
 		end
+		for i=1, N_CUPS do
+			drawCup(math.pi * 2 * i / N_CUPS, 0)
+		end
 		love.graphics.rotate(-wheelRotation)
 		stopPane(WHEEL_PANE)
 	end
@@ -43,7 +47,7 @@ function love.draw()
 end
 
 function startPane(pane)
-	if pane.isPhysical then -- scales to real-world units, with +y as up, and center as 0,0
+	if pane.isPhysical then -- scales to real-world units (cm), with +y as up, and center as 0,0
 		love.graphics.translate(pane.posX * width + 0.5 * pane.sizeX * width, pane.posY * height + 0.5 * pane.sizeY * height)
 		love.graphics.scale(PIXELS_PER_METER / pane.sizeX / 100, -PIXELS_PER_METER / pane.sizeX / 100)
 		love.graphics.setLineWidth(pane.sizeX / PIXELS_PER_METER)
@@ -76,6 +80,7 @@ end
 
 function ud(dt)
 	--wheel kinematics
+	wheelVelocity = wheelVelocity * WHEEL_DRAG ^ dt -- approximate a 'drag' by exponentially decreasing the velocity
 	wheelRotation = (wheelRotation + wheelVelocity * dt) % (2 * math.pi)
 end
 
@@ -94,10 +99,14 @@ function love.mousereleased(x,y,b)
 
 end
 
-function drawCup(wheelAngle, fill)
+function drawCup(angleLocation, fill)
 	love.graphics.setColor(255,127,127)
-	love.graphics.setLineWidth(4 / PIXELS_PER_METER)
-	--love.graphics.
+	love.graphics.translate(math.cos(angleLocation) * WHEEL_RADIUS, math.sin(angleLocation) * WHEEL_RADIUS)
+	love.graphics.rotate(-wheelRotation)
+	love.graphics.line(-CUP_UPPER_RADIUS, CUP_HEIGHT - CUP_ATTACH_Y, -CUP_LOWER_RADIUS, -CUP_ATTACH_Y,
+	                   CUP_LOWER_RADIUS, -CUP_ATTACH_Y, CUP_UPPER_RADIUS, CUP_HEIGHT - CUP_ATTACH_Y)
+	love.graphics.rotate(wheelRotation)
+	love.graphics.translate(-math.cos(angleLocation) * WHEEL_RADIUS, -math.sin(angleLocation) * WHEEL_RADIUS)
 end
 
 vector = {}
