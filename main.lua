@@ -2,8 +2,10 @@ function love.load()
 	width, height = love.graphics.getWidth(), love.graphics.getHeight()
 
 	--Adjustable parameters
-	PIXELS_PER_METER = height
+	PIXELS_PER_METER = height*0.7
+	AUTOPLAY = true
 	N_CUPS = 6
+	SPOKES = 4
 	CUP_LOWER_RADIUS = 2.5 --cm
 	CUP_UPPER_RADIUS = 3.5 --cm
 	CUP_HEIGHT = 9 --cm
@@ -14,7 +16,11 @@ function love.load()
 
 	--Display
 	SHOW_WHEEL = true
-	WHEEL_PANE = {posX = 0.5, posY = 0, sizeX = 0.5, sizeY = 0.7, isPhysical = true}
+	WHEEL_PANE = {posX = 0.2, posY = 0, sizeX = 0.8, sizeY = 0.9, isPhysical = true}
+
+	--Updating quantities
+	wheelRotation = 0 --rad
+	wheelVelocity = 1 --rad/s
 
 end
 
@@ -23,7 +29,14 @@ function love.draw()
 	if SHOW_WHEEL then -- draw wheel pane
 		startPane(WHEEL_PANE)
 		love.graphics.setColor(255,255,255)
-		love.graphics.circle("fill", 0, 0, 200, 32)
+		love.graphics.rotate(wheelRotation)
+		love.graphics.circle("line", 0, 0, WHEEL_RADIUS, 32)
+		for i=1, SPOKES do
+			local attachX = math.cos(math.pi * i / SPOKES) * WHEEL_RADIUS
+			local attachY = math.sin(math.pi * i / SPOKES) * WHEEL_RADIUS
+			love.graphics.line(attachX, attachY, -attachX, -attachY)
+		end
+		love.graphics.rotate(-wheelRotation)
 		stopPane(WHEEL_PANE)
 	end
 
@@ -32,7 +45,7 @@ end
 function startPane(pane)
 	if pane.isPhysical then -- scales to real-world units, with +y as up, and center as 0,0
 		love.graphics.translate(pane.posX * width + 0.5 * pane.sizeX * width, pane.posY * height + 0.5 * pane.sizeY * height)
-		love.graphics.scale(pane.sizeX * width / PIXELS_PER_METER, -pane.sizeY * height / PIXELS_PER_METER)
+		love.graphics.scale(PIXELS_PER_METER / pane.sizeX / 100, -PIXELS_PER_METER / pane.sizeX / 100)
 		love.graphics.setLineWidth(pane.sizeX / PIXELS_PER_METER)
 	else -- simply moves and scales GUI
 		love.graphics.translate(pane.posX * width, pane.posY * height)
@@ -43,7 +56,7 @@ end
 
 function stopPane(pane) -- reverse startPane and then draw a box around the finished pane
 	if pane.isPhysical then
-		love.graphics.scale(PIXELS_PER_METER / width / pane.sizeX, -PIXELS_PER_METER / height / pane.sizeY)
+		love.graphics.scale(100 * pane.sizeX / PIXELS_PER_METER, -100 * pane.sizeX / PIXELS_PER_METER)
 		love.graphics.translate(-pane.posX * width - 0.5 * pane.sizeX * width, -pane.posY * height - 0.5 * pane.sizeY * height)
 	else
 		love.graphics.scale(1 / pane.sizeX, 1 / pane.posY)
@@ -55,15 +68,15 @@ function stopPane(pane) -- reverse startPane and then draw a box around the fini
 end
 
 function love.update(dt)
-	if autoplay then
+	if AUTOPLAY then
 		ud(dt)
 	end
 end
 
 
 function ud(dt)
-
-
+	--wheel kinematics
+	wheelRotation = (wheelRotation + wheelVelocity * dt) % (2 * math.pi)
 end
 
 function love.keypressed(key)
