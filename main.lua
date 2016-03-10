@@ -5,15 +5,18 @@ function love.load()
 	PIXELS_PER_METER = height*0.7
 	AUTOPLAY = true
 	N_CUPS = 6
-	SPOKES = 4
+	SPOKES = 3
 	CUP_LOWER_RADIUS = 2.5 --cm
 	CUP_UPPER_RADIUS = 3.5 --cm
 	CUP_HEIGHT = 9 --cm
+	MIN_CUP_FILL = 6 --cm^3
 	CUP_ATTACH_Y = 7 --cm
 	HOLE_AREA = 0.3 --cm^2
 	WHEEL_RADIUS = 25 --cm
-	WHEEL_MI = 0.0125 --kg*m^2
+	WHEEL_MI = 125 --kg*cm^2
 	WHEEL_DRAG = 0.9 --ratio each second
+	WATER_DENSITY = 0.001 --kg/cm^3
+	GRAVITY = 980 --cm/s^2
 
 	--Display
 	SHOW_WHEEL = true
@@ -21,7 +24,18 @@ function love.load()
 
 	--Updating quantities
 	wheelRotation = 0 --rad
-	wheelVelocity = 1 --rad/s
+	wheelVelocity = 0 --rad/s
+	cupFills = {}
+
+
+
+	--Initialization
+	for i = 1, N_CUPS do
+		cupFills[i] = 120
+	end
+	cupFills[1] = 0
+	CUP_VOLUME = CUP_HEIGHT * math.pi * (CUP_LOWER_RADIUS + CUP_UPPER_RADIUS) ^ 2 / 4 -- approximation, cm^3
+	print(CUP_VOLUME)
 
 end
 
@@ -38,7 +52,7 @@ function love.draw()
 			love.graphics.line(attachX, attachY, -attachX, -attachY)
 		end
 		for i=1, N_CUPS do
-			drawCup(math.pi * 2 * i / N_CUPS, 0)
+			drawCup(math.pi * 2 * i / N_CUPS, cupFills[i])
 		end
 		love.graphics.rotate(-wheelRotation)
 		stopPane(WHEEL_PANE)
@@ -80,7 +94,15 @@ end
 
 function ud(dt)
 	--wheel kinematics
-	wheelVelocity = wheelVelocity * WHEEL_DRAG ^ dt -- approximate a 'drag' by exponentially decreasing the velocity
+	local torque = 0
+	local totalMI = WHEEL_MI
+	for i = 1, N_CUPS do
+		local massRad = cupFills[i] * WATER_DENSITY * WHEEL_RADIUS
+		torque = torque + math.cos(math.pi * 2 * i / N_CUPS) * massRad * GRAVITY
+		totalMI = totalMI + massRad * WHEEL_RADIUS
+	end
+	local wheelAcceleration = torque / totalMI
+	wheelVelocity = wheelAcceleration * dt + wheelVelocity * WHEEL_DRAG ^ dt -- approximate a 'drag' by exponentially decreasing the velocity
 	wheelRotation = (wheelRotation + wheelVelocity * dt) % (2 * math.pi)
 end
 
@@ -91,7 +113,7 @@ function love.keypressed(key)
 end
 
 function love.mousepressed(x,y,b)
-y = height - y
+	y = height - y
 
 end
 
@@ -100,13 +122,24 @@ function love.mousereleased(x,y,b)
 end
 
 function drawCup(angleLocation, fill)
-	love.graphics.setColor(255,127,127)
 	love.graphics.translate(math.cos(angleLocation) * WHEEL_RADIUS, math.sin(angleLocation) * WHEEL_RADIUS)
 	love.graphics.rotate(-wheelRotation)
+	love.graphics.setColor(255,127,127,127)
+	love.graphics.polygon("fill", -CUP_UPPER_RADIUS, CUP_HEIGHT - CUP_ATTACH_Y, -CUP_LOWER_RADIUS, -CUP_ATTACH_Y,
+						  CUP_LOWER_RADIUS, -CUP_ATTACH_Y, CUP_UPPER_RADIUS, CUP_HEIGHT - CUP_ATTACH_Y)
+
+	love.graphics.setColor(127,127,255,127)
+	local fillExtentY = fill / CUP_VOLUME * CUP_HEIGHT
+	local fillExtentX = CUP_LOWER_RADIUS + (CUP_UPPER_RADIUS - CUP_LOWER_RADIUS) * fillExtentY / CUP_HEIGHT
+	love.graphics.polygon("fill", -fillExtentX, fillExtentY - CUP_ATTACH_Y, -CUP_LOWER_RADIUS, -CUP_ATTACH_Y,
+						  CUP_LOWER_RADIUS, -CUP_ATTACH_Y, fillExtentX, fillExtentY - CUP_ATTACH_Y)
+
+	love.graphics.setColor(255,0,0)
 	love.graphics.line(-CUP_UPPER_RADIUS, CUP_HEIGHT - CUP_ATTACH_Y, -CUP_LOWER_RADIUS, -CUP_ATTACH_Y,
 	                   CUP_LOWER_RADIUS, -CUP_ATTACH_Y, CUP_UPPER_RADIUS, CUP_HEIGHT - CUP_ATTACH_Y)
+
+	love.graphics.setColor(255,255,255)
+	love.graphics.circle("fill", 0, 0, 0.5, 6)
 	love.graphics.rotate(wheelRotation)
 	love.graphics.translate(-math.cos(angleLocation) * WHEEL_RADIUS, -math.sin(angleLocation) * WHEEL_RADIUS)
 end
-
-vector = {}
