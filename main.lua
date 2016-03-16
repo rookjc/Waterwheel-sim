@@ -8,7 +8,7 @@ function love.load()
 	PIXELS_PER_METER = height*0.9
 	AUTOPLAY = true
 	DROPS = true -- applies only to drops {} and not spoutDrops {}
-	N_CUPS = 6
+	N_CUPS = 5
 	SPOKES = 3
 	WATER_LEVEL = 40 --cm (how far the water level is below the center of the wheel)
 	CUP_RADIUS = 3 --cm
@@ -38,9 +38,9 @@ function love.load()
 
 	--Initialization
 	for i = 1, N_CUPS do
-		cupFills[i] = 120
+		cupFills[i] = MIN_CUP_FILL
 	end
-	cupFills[1] = 0
+	--cupFills[1] = 0
 	CUP_CS_AREA = math.pi * CUP_RADIUS ^ 2
 	CUP_VOLUME = CUP_HEIGHT * CUP_CS_AREA
 	width2 = width
@@ -67,7 +67,7 @@ function love.draw()
 		end
 		if DROPS then
 			for a, b in ipairs(drops) do
-				love.graphics.circle("fill", b.posX, b.posY, b.radius * 5, 4)
+				love.graphics.circle("fill", b.posX, b.posY, b.radius, 4)
 			end
 		end
 
@@ -126,15 +126,26 @@ end
 
 function ud(dt)
 	--move drops and stuff
-	--table.insert(drops, {posX = 0, posY = 0, velX = math.random(-5, 5), velY = math.random(-5, 5), radius = 3})
-	for a, b in ipairs(spoutDrops) do
+	local fillCup = 0--HERE
 
+	for i = #spoutDrops, 1, -1 do
+		local b = spoutDrops[i]
+		b.velY = b.velY - GRAVITY * dt
+		b.posY = b.posY + b.velY * dt
+		if b.posY < -WATER_LEVEL then
+			table.remove(drops, i)
+		end
 	end
+
 	if DROPS then
-		for a, b in ipairs(drops) do
-			--b.velY = b.velY - GRAVITY
-			b.posX = b.posX + b.velX
-			b.posY = b.posY + b.velY
+		for i = #drops, 1, -1 do
+			local b = drops[i]
+			b.velY = b.velY - GRAVITY * dt
+			b.posX = b.posX + b.velX * dt
+			b.posY = b.posY + b.velY * dt
+			if b.posY < -WATER_LEVEL then
+				table.remove(drops, i)
+			end
 		end
 	end
 
