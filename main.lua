@@ -1,5 +1,5 @@
 --assumptions: cyclindrical cups, vertical acceleration doesn't affect flow rate, water doesn't add to overall moment of inertia
---             cups don't rotate away from vertical orientation, drops don't affect wheel velocity
+--             cups don't rotate away from vertical orientation, drops don't affect wheel velocity, water comes out of spout at 0 m/s
 
 function love.load()
 	width, height = love.graphics.getWidth(), love.graphics.getHeight()
@@ -7,8 +7,10 @@ function love.load()
 	--Adjustable parameters
 	PIXELS_PER_METER = height*0.9
 	AUTOPLAY = true
-	DROPS = true -- applies only to drops {} and not spoutDrops {}
-	N_CUPS = 5
+	TIME_SCALE = 0.2
+	PUMP_ON = false
+	DROPS = false -- applies only to drops {} and not spoutDrops {}
+	N_CUPS = 6
 	SPOKES = 3
 	WATER_LEVEL = 40 --cm (how far the water level is below the center of the wheel)
 	CUP_RADIUS = 3 --cm
@@ -18,11 +20,12 @@ function love.load()
 	HOLE_AREA = 0.01 --cm^2
 	WHEEL_RADIUS = 25 --cm
 	WHEEL_MI = 800 --kg*cm^2
-	WHEEL_DRAG = 0.9 --ratio each second
+	WHEEL_DRAG = 0.6 --ratio each second
 	WATER_DENSITY = 0.001 --kg/cm^3
 	GRAVITY = 980 --cm/s^2
 	SPOUT_RADIUS = 0.7 --cm
 	SPOUT_HEIGHT = 40 --cm above wheel center
+	PUMP_ROF = 2000 --cm^3 / s
 	DROP_VISIBILITY_SCALE = 5000
 
 	--Display
@@ -31,7 +34,7 @@ function love.load()
 
 	--Updating quantities
 	wheelRotation = 0 --rad
-	wheelVelocity = 0 --rad/s
+	wheelVelocity = 0.5 --rad/s
 	cupFills = {}
 	drops = {}
 	spoutDrops = {}
@@ -43,9 +46,12 @@ function love.load()
 	--cupFills[1] = 0
 	CUP_CS_AREA = math.pi * CUP_RADIUS ^ 2
 	CUP_VOLUME = CUP_HEIGHT * CUP_CS_AREA
+	SPOUT_CS_AREA = math.pi * SPOUT_RADIUS ^ 2
+	SPOUT_VELOCITY = PUMP_ROF / SPOUT_CS_AREA
 	width2 = width
 	height2 = height
 	VOLUME_MOD = 3 / 4 / math.pi
+	DIV_ANGLE = 2 * math.pi / N_CUPS
 
 end
 
@@ -63,7 +69,7 @@ function love.draw()
 
 		-- draw drops (two classifications: from spout (which could fill a cup) and 'dead' (for animation only))
 		for a, b in ipairs(spoutDrops) do
-			love.graphics.point(b.posX, b.posY)
+			love.graphics.circle("fill", 0, b.posY, b.radius, 4)
 		end
 		if DROPS then
 			for a, b in ipairs(drops) do
@@ -125,15 +131,23 @@ end
 
 
 function ud(dt)
+	dt = dt * TIME_SCALE
 	--move drops and stuff
-	local fillCup = 0--HERE
+	local fillCup = 6 - (math.ceil((wheelRotation + DIV_ANGLE / 2 - math.pi / 2) / DIV_ANGLE) - 1) % N_CUPS
+	local underSpout = math.abs(math.cos(math.pi * 2 * fillCup / N_CUPS + wheelRotation) * WHEEL_RADIUS) < CUP_RADIUS
+	local fillY = math.sin(DIV_ANGLE * fillCup + wheelRotation) * WHEEL_RADIUS - CUP_ATTACH_Y + cupFills[fillCup] / CUP_CS_AREA
 
 	for i = #spoutDrops, 1, -1 do
 		local b = spoutDrops[i]
 		b.velY = b.velY - GRAVITY * dt
 		b.posY = b.posY + b.velY * dt
-		if b.posY < -WATER_LEVEL then
-			table.remove(drops, i)
+		if b.posY < fillY then
+			if underSpout then
+				cupFills[fillCup] = math.min(cupFills[fillCup] + spoutDrops[i].radius ^ 3 / VOLUME_MOD, CUP_VOLUME)
+				table.remove(spoutDrops, i)
+			else
+				b.checkFill = false
+			end
 		end
 	end
 
@@ -149,6 +163,9 @@ function ud(dt)
 		end
 	end
 
+	if PUMP_ON then
+		table.insert(spoutDrops, {posY = SPOUT_HEIGHT, velY = --[[-SPOUT_VELOCITY]]0, radius = VOLUME_MOD * (PUMP_ROF * dt) ^ (1/3), checkFill = true})
+	end
 
 	--wheel kinematics and cup draining
 	local torque = 0
@@ -174,6 +191,8 @@ end
 function love.keypressed(key)
 	if key == "s" then
 		ud(0.1)
+	elseif key == " " then
+		PUMP_ON = not PUMP_ON
 	end
 end
 
