@@ -7,9 +7,9 @@ function love.load()
 	--Adjustable parameters
 	PIXELS_PER_METER = height*0.9
 	AUTOPLAY = true
-	TIME_SCALE = 0.2
-	PUMP_ON = false
-	DROPS = false -- applies only to drops {} and not spoutDrops {}
+	TIME_SCALE = 1
+	PUMP_ON = true
+	DROPS = true -- applies only to drops {} and not spoutDrops {}
 	N_CUPS = 6
 	SPOKES = 3
 	WATER_LEVEL = 40 --cm (how far the water level is below the center of the wheel)
@@ -17,16 +17,15 @@ function love.load()
 	CUP_HEIGHT = 9 --cm
 	MIN_CUP_FILL = 6 --cm^3
 	CUP_ATTACH_Y = 7 --cm (how high up the nail is on the cup)
-	HOLE_AREA = 0.01 --cm^2
+	HOLE_AREA = 0.1 --cm^2
 	WHEEL_RADIUS = 25 --cm
 	WHEEL_MI = 800 --kg*cm^2
-	WHEEL_DRAG = 0.6 --ratio each second
+	WHEEL_DRAG = 0.7 --ratio each second
 	WATER_DENSITY = 0.001 --kg/cm^3
 	GRAVITY = 980 --cm/s^2
 	SPOUT_RADIUS = 0.7 --cm
 	SPOUT_HEIGHT = 40 --cm above wheel center
-	PUMP_ROF = 2000 --cm^3 / s
-	DROP_VISIBILITY_SCALE = 5000
+	PUMP_ROF = 80 --cm^3 / s
 
 	--Display
 	SHOW_WHEEL = true
@@ -46,11 +45,8 @@ function love.load()
 	--cupFills[1] = 0
 	CUP_CS_AREA = math.pi * CUP_RADIUS ^ 2
 	CUP_VOLUME = CUP_HEIGHT * CUP_CS_AREA
-	SPOUT_CS_AREA = math.pi * SPOUT_RADIUS ^ 2
-	SPOUT_VELOCITY = PUMP_ROF / SPOUT_CS_AREA
 	width2 = width
 	height2 = height
-	VOLUME_MOD = 3 / 4 / math.pi
 	DIV_ANGLE = 2 * math.pi / N_CUPS
 
 end
@@ -65,19 +61,18 @@ function love.draw()
 		love.graphics.setColor(127,127,255,127)
 		love.graphics.rectangle("fill", -width2 / 2, -height2 / 2, width2, height2 / 2 - WATER_LEVEL)
 
-
-
 		-- draw drops (two classifications: from spout (which could fill a cup) and 'dead' (for animation only))
 		for a, b in ipairs(spoutDrops) do
 			love.graphics.circle("fill", 0, b.posY, b.radius, 4)
 		end
+
 		if DROPS then
 			for a, b in ipairs(drops) do
 				love.graphics.circle("fill", b.posX, b.posY, b.radius, 4)
 			end
 		end
 
-
+		-- wheel itself, with cups and all that
 		love.graphics.setColor(255,255,255)
 		love.graphics.rotate(wheelRotation)
 		love.graphics.circle("line", 0, 0, WHEEL_RADIUS, 32)
@@ -133,7 +128,7 @@ end
 function ud(dt)
 	dt = dt * TIME_SCALE
 	--move drops and stuff
-	local fillCup = 6 - (math.ceil((wheelRotation + DIV_ANGLE / 2 - math.pi / 2) / DIV_ANGLE) - 1) % N_CUPS
+	local fillCup = N_CUPS - (math.ceil((wheelRotation + DIV_ANGLE / 2 - math.pi / 2) / DIV_ANGLE) - 1) % N_CUPS
 	local underSpout = math.abs(math.cos(math.pi * 2 * fillCup / N_CUPS + wheelRotation) * WHEEL_RADIUS) < CUP_RADIUS
 	local fillY = math.sin(DIV_ANGLE * fillCup + wheelRotation) * WHEEL_RADIUS - CUP_ATTACH_Y + cupFills[fillCup] / CUP_CS_AREA
 
@@ -141,13 +136,17 @@ function ud(dt)
 		local b = spoutDrops[i]
 		b.velY = b.velY - GRAVITY * dt
 		b.posY = b.posY + b.velY * dt
-		if b.posY < fillY then
-			if underSpout then
-				cupFills[fillCup] = math.min(cupFills[fillCup] + spoutDrops[i].radius ^ 3 / VOLUME_MOD, CUP_VOLUME)
-				table.remove(spoutDrops, i)
-			else
-				b.checkFill = false
+		if b.checkFill then
+			if b.posY < fillY then
+				if underSpout then
+					cupFills[fillCup] = math.min(cupFills[fillCup] + spoutDrops[i].volume, CUP_VOLUME)
+					table.remove(spoutDrops, i)
+				else
+					b.checkFill = false
+				end
 			end
+		elseif b.posY < -WATER_LEVEL then
+			table.remove(spoutDrops, i)
 		end
 	end
 
@@ -164,7 +163,8 @@ function ud(dt)
 	end
 
 	if PUMP_ON then
-		table.insert(spoutDrops, {posY = SPOUT_HEIGHT, velY = --[[-SPOUT_VELOCITY]]0, radius = VOLUME_MOD * (PUMP_ROF * dt) ^ (1/3), checkFill = true})
+		local volume = PUMP_ROF * dt
+		table.insert(spoutDrops, {posY = SPOUT_HEIGHT, velY = 0, volume = volume, radius = math.pow(volume, 1/3), checkFill = true})
 	end
 
 	--wheel kinematics and cup draining
@@ -173,12 +173,12 @@ function ud(dt)
 		local angLocCos = math.cos(math.pi * 2 * i / N_CUPS + wheelRotation)
 		if cupFills[i] > MIN_CUP_FILL then
 			local flowVelocity = math.sqrt(2 * GRAVITY * cupFills[i] / CUP_CS_AREA)
-			cupFills[i] = cupFills[i] - flowVelocity * HOLE_AREA
+			cupFills[i] = cupFills[i] - flowVelocity * HOLE_AREA * dt
 			if DROPS then
 				local angLocSin = math.sin(math.pi * 2 * i / N_CUPS + wheelRotation)
 				table.insert(drops, {posX = angLocCos * WHEEL_RADIUS, posY = angLocSin * WHEEL_RADIUS - CUP_ATTACH_Y,
 									 velX = -angLocSin * WHEEL_RADIUS * wheelVelocity, velY = angLocCos * WHEEL_RADIUS * wheelVelocity - flowVelocity,
-									 radius = (VOLUME_MOD * flowVelocity * HOLE_AREA) ^ (1/3)})
+									 radius = math.pow(flowVelocity * HOLE_AREA * dt, 1/3)})
 			end
 		end
 		torque = torque - angLocCos * cupFills[i] * WATER_DENSITY * GRAVITY * WHEEL_RADIUS
