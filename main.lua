@@ -7,6 +7,10 @@ function love.load()
 	--Adjustable parameters
 	PIXELS_PER_METER = height*0.9
 	AUTOPLAY = true
+	RECORD_DATA = true
+	N_DATA_FRAMES = 3000
+	Y_AXIS_SCALE = 7
+	X_AXIS_SCALE = 60
 	TIME_SCALE = 1
 	PUMP_ON = true
 	DROPS = true -- applies only to drops {} and not spoutDrops {}
@@ -29,7 +33,9 @@ function love.load()
 
 	--Display
 	SHOW_WHEEL = true
+	SHOW_GRAPH = false
 	WHEEL_PANE = {posX = 0, posY = 0, sizeX = 1, sizeY = 1, isPhysical = true}
+	GRAPH_PANE = {posX = 0, posY = 0, sizeX = 1, sizeY = 1, isPhysical = false}
 
 	--Updating quantities
 	wheelRotation = 0 --rad
@@ -37,6 +43,10 @@ function love.load()
 	cupFills = {}
 	drops = {}
 	spoutDrops = {}
+	data = {}
+	dataTimes = {}
+	dataFrame = 1
+	runTime=  0
 
 	--Initialization
 	for i = 1, N_CUPS do
@@ -89,6 +99,48 @@ function love.draw()
 		stopPane(WHEEL_PANE)
 	end
 
+	if SHOW_GRAPH then --draw graph pane
+		startPane(GRAPH_PANE)
+		love.graphics.setColor(255,255,255)
+		love.graphics.print("Angular velocity vs. time", 5, 5)
+		love.graphics.line(width2 * 0.95, height2 / 20, width2 * 0.95, height2 * 0.95)
+		love.graphics.line(width2 / 20, height2 / 2, width2 * 0.95, height2 / 2)
+		love.graphics.print(Y_AXIS_SCALE .. " rad/s", width2 * 0.95 - 55, height2 / 20 - 6)
+		love.graphics.print(-Y_AXIS_SCALE .. " rad/s", width2 * 0.95 - 55, height2 * 0.95 - 6)
+		love.graphics.print(-X_AXIS_SCALE .. " s", width2 / 20, height2 / 2 + 2)
+
+		love.graphics.setColor(127,255,127)
+		love.graphics.translate(width2 * (0.95 - 0.9 / X_AXIS_SCALE * runTime), height2 / 2)
+		--love.graphics.scale(width2 * 0.9 / X_AXIS_SCALE, height2 * 0.9 / Y_AXIS_SCALE)
+		--love.graphics.translate(-runTime, 0)
+		local xScale = width2 * 0.9 / X_AXIS_SCALE
+		local yScale = height2 * 0.9 / Y_AXIS_SCALE
+		local lastX = dataX(1) * xScale
+		local lastY = dataY(1) * yScale
+		for i = 2, N_DATA_FRAMES do
+			local nextX = dataX(i) * xScale
+			local nextY = dataY(i) * yScale
+			love.graphics.line(lastX, lastY, nextX, nextY)
+			lastX = nextX
+			lastY = nextY
+		end
+		--love.graphics.circle("fill", 0, 0, 3, 6)
+		--love.graphics.translate(runTime, 0)
+		--love.graphics.scale(X_AXIS_SCALE / (width2 * 0.9), Y_AXIS_SCALE / (height2 * 0.9))
+		--love.graphics.translate(-width2 * 0.95, -height2 / 2)
+		love.graphics.translate(-width2 * (0.95 - 0.9 / X_AXIS_SCALE * runTime), -height2 / 2)
+
+		stopPane(GRAPH_PANE)
+	end
+
+end
+
+function dataX(i)
+	return dataTimes[(dataFrame - i - 1) % N_DATA_FRAMES + 1] or 0
+end
+
+function dataY(i)
+	return data[(dataFrame - i - 1) % N_DATA_FRAMES + 1] or 0
 end
 
 function startPane(pane)
@@ -100,7 +152,9 @@ function startPane(pane)
 		love.graphics.setLineWidth(pane.sizeX / PIXELS_PER_METER)
 	else -- simply moves and scales GUI
 		love.graphics.translate(pane.posX * width, pane.posY * height)
-		love.graphics.scale(pane.sizeX, pane.posY)
+		love.graphics.scale(pane.sizeX, pane.sizeY)
+		width2 = width * pane.sizeX
+		height2 = height * pane.sizeY
 		love.graphics.setLineWidth(pane.sizeX)
 	end
 end
@@ -127,6 +181,7 @@ end
 
 function ud(dt)
 	dt = dt * TIME_SCALE
+	runTime = runTime + dt
 	--move drops and stuff
 	local fillCup = N_CUPS - (math.ceil((wheelRotation + DIV_ANGLE / 2 - math.pi / 2) / DIV_ANGLE) - 1) % N_CUPS
 	local underSpout = math.abs(math.cos(math.pi * 2 * fillCup / N_CUPS + wheelRotation) * WHEEL_RADIUS) < CUP_RADIUS
@@ -186,6 +241,12 @@ function ud(dt)
 	local wheelAcceleration = torque / WHEEL_MI
 	wheelVelocity = wheelAcceleration * dt + wheelVelocity * WHEEL_DRAG ^ dt -- approximate a 'drag' by exponentially decreasing the velocity
 	wheelRotation = (wheelRotation + wheelVelocity * dt) % (2 * math.pi)
+
+	if RECORD_DATA then -- record data
+		data[dataFrame] = wheelVelocity
+		dataTimes[dataFrame] = runTime
+		dataFrame = dataFrame % N_DATA_FRAMES + 1
+	end
 end
 
 function love.keypressed(key)
@@ -193,6 +254,9 @@ function love.keypressed(key)
 		ud(0.1)
 	elseif key == " " then
 		PUMP_ON = not PUMP_ON
+	elseif key == "g" then
+		SHOW_WHEEL = not SHOW_WHEEL
+		SHOW_GRAPH = not SHOW_GRAPH
 	end
 end
 
