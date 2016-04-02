@@ -1,6 +1,8 @@
 --assumptions: cyclindrical cups, vertical acceleration doesn't affect flow rate, water doesn't add to overall moment of inertia
 --             cups don't rotate away from vertical orientation, drops don't affect wheel velocity, water comes out of spout at 0 m/s
 
+-- *** is significant number
+
 function love.load()
 	width, height = love.graphics.getWidth(), love.graphics.getHeight()
 
@@ -8,28 +10,29 @@ function love.load()
 	PIXELS_PER_METER = height*0.9
 	AUTOPLAY = true
 	RECORD_DATA = true
-	N_DATA_FRAMES = 3000
+	STORE_MODE = false
+	N_DATA_FRAMES = 8000
 	Y_AXIS_SCALE = 7
-	X_AXIS_SCALE = 60
+	X_AXIS_SCALE = 120
 	TIME_SCALE = 1
 	PUMP_ON = true
 	DROPS = true -- applies only to drops {} and not spoutDrops {}
 	N_CUPS = 6
 	SPOKES = 3
 	WATER_LEVEL = 40 --cm (how far the water level is below the center of the wheel)
-	CUP_RADIUS = 3 --cm
-	CUP_HEIGHT = 9 --cm
+	CUP_RADIUS = 3.2 --cm ***
+	CUP_HEIGHT = 12.7 --cm ***
 	MIN_CUP_FILL = 6 --cm^3
-	CUP_ATTACH_Y = 7 --cm (how high up the nail is on the cup)
-	HOLE_AREA = 0.1 --cm^2
-	WHEEL_RADIUS = 25 --cm
-	WHEEL_MI = 800 --kg*cm^2
-	WHEEL_DRAG = 0.7 --ratio each second
+	CUP_ATTACH_Y = 9.5 --cm (how high up the nail is on the cup)
+	HOLE_AREA = 0.087 --cm^2 ***
+	WHEEL_RADIUS = 22.5 --cm ***
+	WHEEL_MI = 800 --kg*cm^2 ***
+	WHEEL_DRAG = 0.7 --ratio each second ***
 	WATER_DENSITY = 0.001 --kg/cm^3
-	GRAVITY = 980 --cm/s^2
+	GRAVITY = 981 --cm/s^2
 	SPOUT_RADIUS = 0.7 --cm
 	SPOUT_HEIGHT = 40 --cm above wheel center
-	PUMP_ROF = 80 --cm^3 / s
+	PUMP_ROF = 80 --cm^3 / s ***
 
 	--Display
 	SHOW_WHEEL = true
@@ -44,9 +47,10 @@ function love.load()
 	drops = {}
 	spoutDrops = {}
 	data = {}
+	data2 = {}
 	dataTimes = {}
 	dataFrame = 1
-	runTime=  0
+	runTime = 0
 
 	--Initialization
 	for i = 1, N_CUPS do
@@ -59,6 +63,21 @@ function love.load()
 	height2 = height
 	DIV_ANGLE = 2 * math.pi / N_CUPS
 
+end
+
+function writeData()
+	AUTOPLAY = false
+	local path = os.date("%c")
+	path = string.sub(path, 1, 2) .. "-" .. string.sub(path, 4, 5) .. "-" .. string.sub(path, 7, 8) .."_"
+	.. string.sub(path, 10, 11) .. "-" .. string.sub(path, 13, 14) .. "-" .. string.sub(path, 16, 17)
+	path = "C:/Users/jrook_000/OneDrive/codeprojects/Waterwheel/data/angvel_" .. path .. ".csv"
+	local dat = ""
+	for i = 1, N_DATA_FRAMES do
+		dat = dataX(i) .. "," .. dataY(i) .. "," .. dataZ(i) .. "\n" .. dat
+	end
+	io.output(path)
+	io.write(dat)
+	AUTOPLAY = true
 end
 
 function love.draw()
@@ -135,12 +154,16 @@ function love.draw()
 
 end
 
-function dataX(i)
+function dataX(i) -- time
 	return dataTimes[(dataFrame - i - 1) % N_DATA_FRAMES + 1] or 0
 end
 
-function dataY(i)
+function dataY(i) -- angular velocity
 	return data[(dataFrame - i - 1) % N_DATA_FRAMES + 1] or 0
+end
+
+function dataZ(i) -- rotation
+	return data2[(dataFrame - i - 1) % N_DATA_FRAMES + 1] or 0
 end
 
 function startPane(pane)
@@ -180,6 +203,9 @@ end
 
 
 function ud(dt)
+	if love.keyboard.isDown("f") then
+		print(math.floor(1 / dt))
+	end
 	dt = dt * TIME_SCALE
 	runTime = runTime + dt
 	--move drops and stuff
@@ -240,12 +266,16 @@ function ud(dt)
 	end
 	local wheelAcceleration = torque / WHEEL_MI
 	wheelVelocity = wheelAcceleration * dt + wheelVelocity * WHEEL_DRAG ^ dt -- approximate a 'drag' by exponentially decreasing the velocity
-	wheelRotation = (wheelRotation + wheelVelocity * dt) % (2 * math.pi)
+	wheelRotation = (wheelRotation + wheelVelocity * dt)--[[ % (2 * math.pi)]]
 
 	if RECORD_DATA then -- record data
 		data[dataFrame] = wheelVelocity
+		data2[dataFrame] = wheelRotation
 		dataTimes[dataFrame] = runTime
 		dataFrame = dataFrame % N_DATA_FRAMES + 1
+		if STORE_MODE and dataFrame == 1 then
+			writeData()
+		end
 	end
 end
 
@@ -257,6 +287,10 @@ function love.keypressed(key)
 	elseif key == "g" then
 		SHOW_WHEEL = not SHOW_WHEEL
 		SHOW_GRAPH = not SHOW_GRAPH
+	elseif key == "d" then
+		RECORD_DATA = not RECORD_DATA
+	elseif key == "w" then
+		writeData()
 	end
 end
 
