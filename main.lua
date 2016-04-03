@@ -275,6 +275,7 @@ function ud(dt)
 		dataFrame = dataFrame % N_DATA_FRAMES + 1
 		if STORE_MODE and dataFrame == 1 then
 			writeData()
+			love.event.quit()
 		end
 	end
 end
