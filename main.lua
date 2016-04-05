@@ -5,7 +5,10 @@
 
 function love.load()
 	width, height = love.graphics.getWidth(), love.graphics.getHeight()
+	setup()
+end
 
+function setup()
 	--Adjustable parameters
 	PIXELS_PER_METER = height*0.9
 	AUTOPLAY = true
@@ -62,6 +65,15 @@ function love.load()
 	width2 = width
 	height2 = height
 	DIV_ANGLE = 2 * math.pi / N_CUPS
+
+	--Modification controls
+	PROPERTIES = {"HOLE_AREA", "WHEEL_DRAG", "PUMP_ROF", "Y_AXIS_SCALE"}
+	UNITS = {"cm^2", "", "cm^3 / s", "rad / s"}
+	STEPS = {0.04, 0.1, 5, 1}
+	property = 1
+	propDispTime = 0
+	holding = false
+	baseRot = 0
 
 end
 
@@ -130,8 +142,6 @@ function love.draw()
 
 		love.graphics.setColor(127,255,127)
 		love.graphics.translate(width2 * (0.95 - 0.9 / X_AXIS_SCALE * runTime), height2 / 2)
-		--love.graphics.scale(width2 * 0.9 / X_AXIS_SCALE, height2 * 0.9 / Y_AXIS_SCALE)
-		--love.graphics.translate(-runTime, 0)
 		local xScale = width2 * 0.9 / X_AXIS_SCALE
 		local yScale = height2 * 0.9 / Y_AXIS_SCALE
 		local lastX = dataX(1) * xScale
@@ -139,17 +149,20 @@ function love.draw()
 		for i = 2, N_DATA_FRAMES do
 			local nextX = dataX(i) * xScale
 			local nextY = dataY(i) * yScale
-			love.graphics.line(lastX, lastY, nextX, nextY)
+			love.graphics.line(lastX, -lastY, nextX, -nextY)
 			lastX = nextX
 			lastY = nextY
 		end
-		--love.graphics.circle("fill", 0, 0, 3, 6)
-		--love.graphics.translate(runTime, 0)
-		--love.graphics.scale(X_AXIS_SCALE / (width2 * 0.9), Y_AXIS_SCALE / (height2 * 0.9))
-		--love.graphics.translate(-width2 * 0.95, -height2 / 2)
 		love.graphics.translate(-width2 * (0.95 - 0.9 / X_AXIS_SCALE * runTime), -height2 / 2)
-
 		stopPane(GRAPH_PANE)
+
+	end
+
+	if propDispTime > 0 then
+		love.graphics.setColor(63,63,63)
+		love.graphics.rectangle("fill", 10, 10, 200, 75)
+		love.graphics.setColor(255,255,255)
+		love.graphics.print(PROPERTIES[property] .. ": " .. _G[PROPERTIES[property]] .. " " .. UNITS[property], 20, 39)
 	end
 
 end
@@ -167,6 +180,7 @@ function dataZ(i) -- rotation
 end
 
 function startPane(pane)
+	love.graphics.push()
 	if pane.isPhysical then -- scales to real-world units (cm), with +y as up, and center as 0,0
 		love.graphics.translate(pane.posX * width + 0.5 * pane.sizeX * width, pane.posY * height + 0.5 * pane.sizeY * height)
 		love.graphics.scale(PIXELS_PER_METER / pane.sizeX / 100, -PIXELS_PER_METER / pane.sizeX / 100)
@@ -183,28 +197,28 @@ function startPane(pane)
 end
 
 function stopPane(pane) -- reverse startPane and then draw a box around the finished pane
-	if pane.isPhysical then
-		love.graphics.scale(pane.sizeX * 100 / PIXELS_PER_METER, -pane.sizeY * 100 / PIXELS_PER_METER)
-		love.graphics.translate(-pane.posX * width - 0.5 * pane.sizeX * width, -pane.posY * height - 0.5 * pane.sizeY * height)
-	else
-		love.graphics.scale(1 / pane.sizeX, 1 / pane.posY)
-		love.graphics.translate(-pane.posX * width, -pane.posY * height)
-	end
+	love.graphics.pop()
 	love.graphics.setLineWidth(1)
 	love.graphics.setColor(255,255,255)
 	love.graphics.rectangle("line", pane.posX * width, pane.posY * height, pane.sizeX * width, pane.sizeY * height)
 end
 
 function love.update(dt)
+	if propDispTime > 0 then
+		propDispTime = propDispTime - dt
+	end
 	if AUTOPLAY then
 		ud(dt)
+	elseif holding then
+		wheelVelocity = 0
+		wheelRotation = math.atan2(height / 2 - love.mouse.getY(), love.mouse.getX() - width / 2) + baseRot
 	end
 end
 
 
 function ud(dt)
 	if love.keyboard.isDown("f") then
-		print(math.floor(1 / dt))
+		print(math.floor(1 / dt), math.floor(dt * 1000 + 0.5) / 1000)
 	end
 	dt = dt * TIME_SCALE
 	runTime = runTime + dt
@@ -264,9 +278,15 @@ function ud(dt)
 		end
 		torque = torque - angLocCos * cupFills[i] * WATER_DENSITY * GRAVITY * WHEEL_RADIUS
 	end
-	local wheelAcceleration = torque / WHEEL_MI
-	wheelVelocity = wheelAcceleration * dt + wheelVelocity * WHEEL_DRAG ^ dt -- approximate a 'drag' by exponentially decreasing the velocity
-	wheelRotation = (wheelRotation + wheelVelocity * dt)--[[ % (2 * math.pi)]]
+	if not holding then
+		local wheelAcceleration = torque / WHEEL_MI
+		wheelVelocity = wheelAcceleration * dt + wheelVelocity * WHEEL_DRAG ^ dt -- approximate a 'drag' by exponentially decreasing the velocity
+		wheelRotation = (wheelRotation + wheelVelocity * dt)--[[ % (2 * math.pi)]]
+	else -- the user has control of manually moving / spinning the wheel
+		local newWR = math.atan2(height / 2 - love.mouse.getY(), love.mouse.getX() - width / 2) + baseRot
+		wheelVelocity = (newWR - wheelRotation) / dt
+		wheelRotation = newWR
+	end
 
 	if RECORD_DATA then -- record data
 		data[dataFrame] = wheelVelocity
@@ -282,26 +302,48 @@ end
 
 function love.keypressed(key)
 	if key == "s" then
-		ud(0.1)
+		ud(0.05)
 	elseif key == " " then
 		PUMP_ON = not PUMP_ON
 	elseif key == "g" then
+		holding = false
 		SHOW_WHEEL = not SHOW_WHEEL
 		SHOW_GRAPH = not SHOW_GRAPH
 	elseif key == "d" then
 		RECORD_DATA = not RECORD_DATA
 	elseif key == "w" then
 		writeData()
+	elseif key == "p" then
+		AUTOPLAY = not AUTOPLAY
+	elseif key == "escape" then
+		love.event.quit()
+	elseif key == "r" and (love.keyboard.isDown("lshift") or love.keyboard.isDown("rshift")) then
+		AUTOPLAY = false
+		setup()
+	elseif key == "left" then
+		property = property % #PROPERTIES + 1
+		propDispTime = 3
+	elseif key == "right" then
+		property = (property - 2) % #PROPERTIES + 1
+		propDispTime = 3
+	elseif key == "up" then
+		_G[PROPERTIES[property]] = _G[PROPERTIES[property]] + STEPS[property]
+		propDispTime = 3
+	elseif key == "down" then
+		_G[PROPERTIES[property]] = _G[PROPERTIES[property]] - STEPS[property]
+		propDispTime = 3
 	end
 end
 
 function love.mousepressed(x,y,b)
-	y = height - y
-
+	if SHOW_WHEEL then
+		holding = true
+		baseRot = wheelRotation - math.atan2(height / 2 - y, x - width / 2)
+	end
 end
 
 function love.mousereleased(x,y,b)
-
+	holding = false
 end
 
 function drawCup(angleLocation, fill)
